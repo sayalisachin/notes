@@ -1,0 +1,228 @@
+
+# FINAL HYBRID SYSTEM: APRIORI + WEIGHTED ADJ LIST GRAPH
+
+
+# pip install pandas
+
+import pandas as pd
+from collections import defaultdict
+from itertools import combinations
+from pathlib import Path
+
+
+# 1. LOAD DATASET
+
+
+def load_dataset():
+    path = Path(r"C:\Users\Sayali\Downloads\tuned_hospital_dataset.csv")
+    if path.exists():
+        print(f"[INFO] Loading dataset from {path}")
+        return pd.read_csv(path)
+    else:
+        raise FileNotFoundError("Dataset not found")
+
+df = load_dataset()
+
+print("\n[RAW DATA SAMPLE]")
+print(df.head())
+
+
+
+# 2. PREPROCESS (SYMPTOMS → MATRIX)
+# we load symptoms occuring as either 0 or 1 
+
+def preprocess(df):
+    symptom_col = None
+    for c in df.columns:
+        if "symptom" in c.lower():
+            symptom_col = c
+            break
+
+    if symptom_col is None:
+        raise ValueError("No symptom column found")
+
+    symptom_lists = df[symptom_col].astype(str).apply(lambda x: x.split(','))
+
+    # Build one-hot manually
+    all_symptoms = sorted({s.strip() for row in symptom_lists for s in row})
+    matrix = []
+
+    for row in symptom_lists:
+        row_set = set([s.strip() for s in row])
+        matrix.append([s in row_set for s in all_symptoms])
+
+    return pd.DataFrame(matrix, columns=all_symptoms)
+
+symptom_df = preprocess(df)
+
+print("\n[SYMPTOM MATRIX]")
+print(symptom_df.head())
+
+
+
+# 3. APRIORI (IMPROVED)
+
+
+def apriori(df, min_support=0.1, max_len=3):
+    items = list(df.columns)
+    total = len(df)
+    freq = []
+
+    for size in range(1, max_len + 1):
+        for combo in combinations(items, size):
+            mask = df[list(combo)].all(axis=1)
+            support = mask.sum() / total
+
+            if support >= min_support:
+                freq.append({
+                    "itemsets": frozenset(combo),
+                    "support": support
+                })
+
+    return pd.DataFrame(freq)
+
+frequent_itemsets = apriori(symptom_df)
+
+
+
+# 4. ASSOCIATION RULES (WITH LIFT)
+
+
+def generate_rules(freq_df, min_conf=0.5):
+    support_map = {
+        row['itemsets']: row['support']
+        for _, row in freq_df.iterrows()
+    }
+
+    rules = []
+
+    for itemset, support in support_map.items():
+        if len(itemset) < 2:
+            continue
+
+        for r in range(1, len(itemset)):
+            for antecedent in combinations(itemset, r):
+                antecedent = frozenset(antecedent)
+                consequent = itemset - antecedent
+
+                conf = support / support_map[antecedent]
+                lift = conf / support_map.get(consequent, 1)
+
+                if conf >= min_conf:
+                    rules.append({
+                        "antecedents": antecedent,
+                        "consequents": consequent,
+                        "support": support,
+                        "confidence": conf,
+                        "lift": lift
+                    })
+
+    df_rules = pd.DataFrame(rules)
+    return df_rules.sort_values(by="confidence", ascending=False)
+
+rules = generate_rules(frequent_itemsets)
+
+print("\n[ASSOCIATION RULES]")
+for _, r in rules.iterrows():
+    print(f"{list(r['antecedents'])} → {list(r['consequents'])} "
+          f"(conf={r['confidence']:.2f}, lift={r['lift']:.2f})")
+
+
+
+# 5. WEIGHTED GRAPH (ADJ LIST)
+
+
+class SymptomGraph:
+    def __init__(self):
+        self.graph = defaultdict(dict)
+
+    def add_edge(self, a, b, weight):
+        self.graph[a][b] = max(self.graph[a].get(b, 0), weight)
+        self.graph[b][a] = max(self.graph[b].get(a, 0), weight)
+
+    def build(self, rules):
+        for _, r in rules.iterrows():
+            for a in r['antecedents']:
+                for b in r['consequents']:
+                    self.add_edge(a, b, r['confidence'])
+
+    def display(self):
+        print("\n[GRAPH - ADJ LIST]")
+        for k, v in self.graph.items():
+            print(f"{k} -> {v}")
+
+graph = SymptomGraph()
+graph.build(rules)
+graph.display()
+
+
+
+# 6. MULTI-STEP GRAPH EXPANSION 
+
+def expand(graph, symptoms, depth=2):
+    visited = set(symptoms)
+    queue = [(s, 0) for s in symptoms]
+
+    while queue:
+        node, d = queue.pop(0)
+
+        if d < depth:
+            for neigh in graph.graph.get(node, {}):
+                if neigh not in visited:
+                    visited.add(neigh)
+                    queue.append((neigh, d+1))
+
+    return list(visited)
+
+
+
+# 7. RULE MATCHING
+
+
+def match_rules(rules, symptoms):
+    matches = []
+
+    for _, r in rules.iterrows():
+        if set(r['antecedents']).issubset(symptoms):
+            matches.append({
+                "IF": list(r['antecedents']),
+                "THEN": list(r['consequents']),
+                "confidence": round(r['confidence'], 2)
+            })
+
+    return matches
+
+
+# 8. FULL PIPELINE
+
+
+def diagnose(patient_symptoms):
+    print("\n==============================")
+    print("[INPUT]", patient_symptoms)
+
+    expanded = expand(graph, patient_symptoms)
+    print("[EXPANDED]", expanded)
+
+    matched = match_rules(rules, expanded)
+
+    print("[RULE MATCHES]")
+    for m in matched:
+        print(m)
+
+    print("==============================\n")
+
+
+
+# 9. TEST
+
+
+symptoms = list(symptom_df.columns)
+
+diagnose([symptoms[0]])
+diagnose(symptoms[:2])
+diagnose(symptoms[:3])
+
+# support threshold in rules in confidence
+# check how many rules based on confidence 
+# do conviction, cossine
+

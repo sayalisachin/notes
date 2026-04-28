@@ -1,0 +1,194 @@
+import os
+import json
+import numpy as np
+from typing import List, Dict
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+class LLMAgent:
+    """
+    This class interacts with OpenAI to:
+    1. Decide best data structure
+    2. Analyze patient symptoms
+    """
+
+    def analyze_sparsity(self, data: List[List[int]]) -> Dict:
+        """
+        Uses LLM to decide whether dataset is sparse or dense
+        and suggests appropriate data structure
+        """
+
+        total = len(data) * len(data[0])
+        non_zero = sum(1 for row in data for val in row if val != 0)
+        sparsity = 1 - (non_zero / total)
+
+        prompt = f"""
+        Dataset sparsity is {sparsity:.2f}.
+        
+        Rules:
+        - If sparsity > 0.5 => use dictionary
+        - Else => use matrix
+        
+        Respond strictly in JSON:
+        {{
+            "data_structure": "...",
+            "reason": "..."
+        }}
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": "You are a system optimization expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+
+        # Parse JSON safely
+        output = response.choices[0].message.content
+        return json.loads(output)
+
+
+    def analyze_symptoms(self, symptoms_present: List[str], all_symptoms: Dict[str, float]) -> Dict:
+        """
+        Uses LLM to interpret symptoms and give diagnosis + confidence
+        """
+
+        prompt = f"""
+        Given:
+        All symptoms with weights: {all_symptoms}
+        Observed symptoms: {symptoms_present}
+
+        Compute:
+        - Confidence score (0 to 1)
+        - Diagnosis level (Low / Moderate / High probability of Jaundice)
+
+        Respond strictly in JSON:
+        {{
+            "confidence": float,
+            "diagnosis": "...",
+            "reason": "..."
+        }}
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": "You are a medical assistant AI."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+
+        output = response.choices[0].message.content
+        return json.loads(output)
+
+
+# 2. DATA STRUCTURE HANDLER
+
+class DataStructureSelector:
+    """
+    Converts dataset into appropriate structure
+    based on LLM decision
+    """
+
+    def __init__(self, decision: Dict):
+        self.type = decision["data_structure"]
+
+    def store(self, data: List[List[int]]):
+        if self.type == "dictionary":
+            return self.to_sparse_dict(data)
+        else:
+            return np.array(data)
+
+    def to_sparse_dict(self, data):
+        """
+        Convert matrix → sparse dictionary
+        Only store non-zero values
+        """
+        sparse_dict = {}
+        for i, row in enumerate(data):
+            for j, val in enumerate(row):
+                if val != 0:
+                    sparse_dict[(i, j)] = val
+        return sparse_dict
+
+
+
+# 3. PATIENT SYSTEM
+
+class PatientSystem:
+    """
+    - LLM reasoning
+    - Data structure selection
+    - Patient diagnosis
+    """
+
+    def __init__(self):
+        self.llm = LLMAgent()
+
+        # Symptom weights (can later come from DB or RAG)
+        self.jaundice_symptoms = {
+            "yellow_skin": 0.4,
+            "dark_urine": 0.3,
+            "fatigue": 0.1,
+            "fever": 0.1,
+            "nausea": 0.1
+        }
+
+    def process_dataset(self, data):
+        """
+        Step 1: LLM decides best DS
+        Step 2: Store data accordingly in the meomory
+        """
+
+        decision = self.llm.analyze_sparsity(data)
+
+        print("\n[LLM Decision]")
+        print(decision)
+
+        ds = DataStructureSelector(decision)
+        stored_data = ds.store(data)
+
+        print("\n[Stored Data Structure Type]")
+        print(type(stored_data))
+
+        print("\n[Stored Data]")
+        print(stored_data)
+
+        return stored_data
+
+
+    def diagnose_patient(self, patient_id: str, symptoms: List[str]):
+        # Uses LLM to diagnose based on symptoms
+
+        result = self.llm.analyze_symptoms(symptoms, self.jaundice_symptoms)
+
+        print(f"\n[Patient {patient_id}]")
+        print("Symptoms:", symptoms)
+        print("Confidence:", result["confidence"])
+        print("Diagnosis:", result["diagnosis"])
+        print("Reason:", result["reason"])
+
+
+if __name__ == "__main__":
+    system = PatientSystem()
+
+    # Example dataset (0 = missing values => sparsity)
+    data = [
+        [1, 0, 0, 2],
+        [0, 0, 3, 0],
+        [0, 0, 0, 0],
+        [4, 0, 0, 5]
+    ]
+
+    # Step 1: Data Structure Selection
+    system.process_dataset(data)
+
+    # Step 2: Patient Diagnosis
+    system.diagnose_patient("A", ["yellow_skin", "fatigue"])
+    system.diagnose_patient("B", ["yellow_skin", "dark_urine", "fatigue", "fever", "nausea"])

@@ -1,0 +1,97 @@
+    # ================================
+# 📌 Step 1: Import Libraries
+# ================================
+import pandas as pd
+import numpy as np
+
+# ================================
+# 📌 Step 2: Load Dataset
+# ================================
+file_path = "hospital data analysis.csv"  # change path if needed
+df = pd.read_csv(file_path)
+
+print("✅ Dataset Loaded Successfully\n")
+print(df.head())
+
+
+# ================================
+# 📌 Step 3: Basic Info
+# ================================
+print("\n📊 Dataset Info:")
+print(df.info())
+
+print("\n📊 Statistical Summary:")
+print(df.describe())
+
+
+# ================================
+# 📌 Step 4: Data Cleaning
+# ================================
+
+# 1. Remove duplicate rows
+df = df.drop_duplicates()
+
+# 2. Strip whitespace from string columns
+for col in df.select_dtypes(include='object').columns:
+    df[col] = df[col].astype(str).str.strip()
+
+# 3. Handle missing values (optional strategy)
+# Fill numeric columns with mean
+for col in df.select_dtypes(include=np.number).columns:
+    df[col].fillna(df[col].mean(), inplace=True)
+
+# Fill categorical columns with mode
+for col in df.select_dtypes(include='object').columns:
+    df[col].fillna(df[col].mode()[0], inplace=True)
+
+print("\n✅ Data Cleaning Completed")
+
+
+# ================================
+# 📌 Step 5: Sparsity Calculation
+# ================================
+
+# Total cells
+total_cells = df.shape[0] * df.shape[1]
+
+# Missing values
+missing_values = df.isnull().sum().sum()
+
+# Sparsity ratio
+sparsity_ratio = missing_values / total_cells
+
+print("\n📊 Sparsity Analysis:")
+print(f"Total Cells: {total_cells}")
+print(f"Missing Values: {missing_values}")
+print(f"Sparsity Ratio: {sparsity_ratio:.4f}")
+
+
+# ================================
+# 📌 Step 6: (Optional) Create Sparse Dataset
+# ================================
+
+sparsity_level = 0.3  # 30% sparsity
+
+df_sparse = df.copy()
+mask = np.random.rand(*df_sparse.shape) < sparsity_level
+df_sparse = df_sparse.mask(mask)
+
+# Recalculate sparsity
+missing_sparse = df_sparse.isnull().sum().sum()
+sparsity_sparse = missing_sparse / total_cells
+
+print("\n📊 Sparse Dataset Created:")
+print(f"New Missing Values: {missing_sparse}")
+print(f"New Sparsity Ratio: {sparsity_sparse:.4f}")
+
+# Save sparse dataset
+df_sparse.to_csv("hospital_sparse.csv", index=False)
+
+print("\n💾 Sparse dataset saved as 'hospital_sparse.csv'")
+
+
+# ================================
+# 📌 Step 7: Final Clean Dataset Save
+# ================================
+df.to_csv("hospital_cleaned.csv", index=False)
+print("\n💾 Cleaned dataset saved as 'hospital_cleaned.csv'")

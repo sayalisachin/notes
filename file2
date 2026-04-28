@@ -1,0 +1,24 @@
+def detect_dataset_density(df):
+    import numpy as np
+
+    # Convert common placeholders to NaN
+    df = df.replace(["NA", "null", "None", ""], np.nan)
+
+    # Total cells
+    total_cells = df.shape[0] * df.shape[1]
+
+    # Missing values
+    missing_values = df.isnull().sum().sum()
+
+    # Sparsity ratio
+    sparsity_ratio = missing_values / total_cells
+
+    # Classification
+    if sparsity_ratio < 0.1:
+        dataset_type = "Dense" 
+    elif sparsity_ratio < 0.5:
+        dataset_type = "Moderately Sparse"
+    else:
+        dataset_type = "Highly Sparse"
+
+    return dataset_type, sparsity_ratio

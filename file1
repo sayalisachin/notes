@@ -1,0 +1,89 @@
+# pip install pandas mlxtend
+
+import pandas as pd
+from mlxtend.frequent_patterns import apriori, association_rules
+
+# Example dataset (1 = symptom present)
+data = [
+    {"yellow_skin":1, "dark_urine":1, "fatigue":1, "fever":0, "nausea":0},
+    {"yellow_skin":1, "dark_urine":1, "fatigue":0, "fever":1, "nausea":1},
+    {"yellow_skin":0, "dark_urine":0, "fatigue":1, "fever":1, "nausea":1},
+    {"yellow_skin":1, "dark_urine":1, "fatigue":1, "fever":1, "nausea":1},
+]
+
+df = pd.DataFrame(data)
+
+# Step 1: Frequent itemsets
+frequent = apriori(df, min_support=0.5, use_colnames=True)
+
+# Step 2: Association rules
+rules = association_rules(frequent, metric="confidence", min_threshold=0.7)
+
+print("\n[Association Rules]")
+print(rules[['antecedents', 'consequents', 'support', 'confidence']])
+
+# Find patterns like:
+
+# {yellow_skin, dark_urine} → jaundice
+# {fever, nausea} → infection
+# and then you group similar patients suffering from same disease
+
+# When only a subset of symptoms is available, 
+# the adjacency list enables traversal of related symptoms, allowing the system to infer missing information and improve diagnosis
+# only uses relationships and stores symptom links
+
+# Patient Input → Graph (Adj List) → Association Rules → LLM → Diagnosis - WORK ON THIS APRIORI ALGO ON SYMPTOMS
+# Combine multiple signals: Rule confidence + Cluster similarity + LLM confidence
+# Final=0.4⋅Rules+0.3⋅Clustering+0.3⋅LLM
+# Graph Depth 1 → direct symptoms + Depth 2 → indirect symptoms
+
+# Association Rules -> Learn symptom correlations from data
+# Graph (Adjacency List) -> Store relationships efficiently (sparse)
+# LLM -> Reason + handle incomplete cases
+
+# Graph (Adjacency List)
+#  Handles missing / incomplete symptom data
+#  Expands given symptoms by adding related ones
+#  Efficient for sparse relationships
+#  "Fills the gaps"
+
+# Association Rules
+#  Learns symptom co-occurrence patterns from historical data
+# Identifies strong correlations between symptoms
+# "Learns from past data"
+
+# LLM (Large Language Model)
+#  Interprets expanded symptom set
+#  Handles uncertainty and partial inputs
+#  Provides diagnosis with explanation
+#  "Thinks like a doctor"
+
+
+
+from collections import defaultdict
+
+class SymptomGraph:
+    def __init__(self):
+        self.graph = defaultdict(list)
+
+    def add_edge(self, symptom1, symptom2):
+        self.graph[symptom1].append(symptom2)
+        self.graph[symptom2].append(symptom1)
+
+    def build_from_rules(self, rules):
+        for _, row in rules.iterrows():
+            for a in row['antecedents']:
+                for b in row['consequents']:
+                    self.add_edge(a, b)
+
+    def display(self):
+        print("\n[Adjacency List]")
+        for k, v in self.graph.items():
+            print(k, "->", v)
+    def diagnose_with_graph(graph, patient_symptoms):
+        related = set()
+
+        for symptom in patient_symptoms:
+            related.update(graph.graph.get(symptom, []))
+
+    return related
